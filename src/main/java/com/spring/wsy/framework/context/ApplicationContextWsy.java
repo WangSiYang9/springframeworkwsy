@@ -3,6 +3,11 @@ package com.spring.wsy.framework.context;
 import com.spring.wsy.framework.annotation.AutowiredWsy;
 import com.spring.wsy.framework.annotation.ControllerWsy;
 import com.spring.wsy.framework.annotation.ServiceWsy;
+import com.spring.wsy.framework.aop.AopProxyWsy;
+import com.spring.wsy.framework.aop.CglibAopProxyWsy;
+import com.spring.wsy.framework.aop.JdkDynamicAopProxyWsy;
+import com.spring.wsy.framework.aop.config.AopConfigWsy;
+import com.spring.wsy.framework.aop.support.AdvisedSupportWsy;
 import com.spring.wsy.framework.beans.BeanWrapperWsy;
 import com.spring.wsy.framework.beans.config.BeanPostProcessorWsy;
 import com.spring.wsy.framework.beans.support.BeanDefinitionReaderWsy;
@@ -14,6 +19,7 @@ import com.spring.wsy.framework.beans.config.BeanDefinitionWsy;
 import java.lang.reflect.Field;
 import java.util.List;
 import java.util.Map;
+import java.util.Properties;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -123,6 +129,15 @@ public class ApplicationContextWsy extends DefaultListableBeanFactoryWsy impleme
             }else {
                 Class<?> clazz = Class.forName(className);
                 instance = clazz.newInstance();
+
+                AdvisedSupportWsy config = instantionAopConfig(beanDefinitionWsy);
+                config.setTargetClass(clazz);
+                config.setTarget(instance);
+                //符合PointCut的规则的话，闯将代理对象
+                if(config.pointCutMatch()) {
+                    instance = createProxy(config).getProxy();
+                }
+
                 this.factoryBeanObjectCache.put(className,instance);
                 this.factoryBeanObjectCache.put(beanDefinitionWsy.getFactoryBeanName(),instance);
             }
@@ -131,6 +146,25 @@ public class ApplicationContextWsy extends DefaultListableBeanFactoryWsy impleme
         }
 
         return instance;
+    }
+
+    private AopProxyWsy createProxy(AdvisedSupportWsy config) throws Exception {
+        Class targetClass = config.getTargetClass();
+        if(targetClass.getInterfaces().length > 0){
+            return new JdkDynamicAopProxyWsy(config);
+        }
+        return new CglibAopProxyWsy(config);
+    }
+
+    private AdvisedSupportWsy instantionAopConfig(BeanDefinitionWsy beanDefinitionWsy) {
+        AopConfigWsy config = new AopConfigWsy();
+        config.setPointCut(this.reader.getConfig().getProperty("pointCut"));
+        config.setAspectClass(this.reader.getConfig().getProperty("aspectClass"));
+        config.setAspectBefore(this.reader.getConfig().getProperty("aspectBefore"));
+        config.setAspectAfter(this.reader.getConfig().getProperty("aspectAfter"));
+        config.setAspectAfterThrow(this.reader.getConfig().getProperty("aspectAfterThrow"));
+        config.setAspectAfterThrowingName(this.reader.getConfig().getProperty("aspectAfterThrowingName"));
+        return new AdvisedSupportWsy(config);
     }
 
     private void populateBean(String beanName, BeanDefinitionWsy beanDefinitionWsy, BeanWrapperWsy beanWrapperWsy) {
@@ -176,5 +210,8 @@ public class ApplicationContextWsy extends DefaultListableBeanFactoryWsy impleme
         return this.beanDefinitionMap.keySet().toArray(new  String[this.beanDefinitionMap.size()]);
     }
 
+    public Properties getConfig(){
+        return this.reader.getConfig();
+    }
 
 }
